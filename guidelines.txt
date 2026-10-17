@@ -1,0 +1,391 @@
+CEREPHYTE / CEREPHYTE SOFTWARE
+PROJECT CONTEXT AND DASHBOARD TECHNICAL BRIEF
+Prepared for GitHub Copilot before further implementation
+Project organization: ISLERI (Independent Society for Laboratory Electrophysiology Research and Instrumentation)
+Document purpose: Give coding assistants a reliable project overview, current design context, intended dashboard behavior, constraints, and rules for making changes safely.
+Status reference date: 17 October 2026
+
+======================================================================
+1. COPILOT: HOW TO USE THIS DOCUMENT
+======================================================================
+
+Read this document before proposing or writing code. Treat the checked-in source code, repository documentation, and current tests as the authority for the implementation details that exist today. This document describes project intent and known context; it is not proof that every planned feature has already been implemented.
+
+Before editing:
+1. Inspect the repository tree, README, dependency files, changelog, and current Git status.
+2. Identify the existing app entry point and understand the current data flow.
+3. Preserve working behavior unless the task explicitly asks to change it.
+4. Do not invent hardware capabilities, endpoints, packet formats, sensor calibration, or data fields. Verify them in the code, schematic, or protocol specification.
+5. If a detail is unknown or inconsistent, call it out clearly rather than silently guessing.
+6. Make small, testable changes and explain which files changed and how the changes were checked.
+
+Do not rewrite the entire dashboard just to add a feature. Prefer focused, backwards-compatible changes.
+
+======================================================================
+2. PROJECT IDENTITY AND PURPOSE
+======================================================================
+
+CEREPHYTE (also written CerePhyte or CEREPHYTE) is a low-cost plant bioelectric signal acquisition and analysis instrument being developed by ISLERI. The name combines “Cere” (brain/intelligence) and “Phyte” (plant).
+
+The project aims to support research and practical exploration of plant bioelectric activity through an integrated instrument and software workflow. The project includes hardware design, embedded firmware, a computer dashboard, data recording, analysis, and planned optional AI-assisted interpretation.
+
+CEREPHYTE is not simply a dashboard or an AI application. It is a hardware-plus-firmware-plus-software system. The dashboard must be designed around real instrument behavior while remaining useful for development, simulation, and testing when the physical device is unavailable.
+
+Primary goals:
+- Acquire and display plant bioelectric signals.
+- Support multiple acquisition channels (the current design targets eight channels).
+- Provide a clear live-monitoring experience.
+- Record acquired data with timestamps and export it for later analysis.
+- Support signal processing and conventional statistical analysis.
+- Provide a simulation path for software development and demonstrations.
+- Offer AI-assisted analysis as an optional, enableable feature, not as a mandatory dependency.
+- Keep the software maintainable, documented, and accessible to users with different levels of computing power.
+
+The project is developed as an ISLERI engineering and research initiative. Do not describe it as a medically validated diagnostic instrument. Do not claim validated biological interpretations, clinical performance, or scientific conclusions unless supported by actual test evidence.
+
+======================================================================
+3. REPOSITORY ARCHITECTURE
+======================================================================
+
+The intended project organization is three separate repositories:
+
+A. ISLERI-labs/CP_hardware_resources
+Responsibility: Physical hardware design.
+Expected contents include KiCad schematics and PCB files, bills of materials, component information, assembly/wiring documentation, hardware revision records, and validation notes.
+
+B. ISLERI-labs/CP_firmware
+Responsibility: Embedded code and device-level behavior.
+Expected contents include Arduino Uno and ESP8266 firmware, acquisition control, peripheral interfaces, device communication, calibration routines, and firmware tests.
+
+C. ISLERI-labs/CP_software
+Responsibility: The complete application software experience.
+Expected contents include the Streamlit dashboard, live visualization, recording/export, data processing, statistics, simulation mode, configuration, and optional AI-assisted analysis and reporting.
+
+The dashboard and AI features belong in CP_software. AI is a built-in optional feature of the application, not a separate product or mandatory fourth repository.
+
+Repository versions should be independent. A hardware revision, firmware release, and software release do not need identical version numbers. Record tested combinations in a compatibility matrix.
+
+The firmware repository should be the authoritative location for the device communication protocol. The software repository may include a concise explanation and a link or a copy generated from the authoritative specification, but avoid maintaining conflicting definitions.
+
+Licensing direction discussed for CP_firmware and CP_software: Apache License 2.0, subject to confirming ownership and third-party dependency compatibility. This license permits commercial reuse and modifications, requires applicable notices to be preserved, and does not require modified source code to be published. Do not add license files or change licensing automatically unless specifically asked.
+
+======================================================================
+4. HARDWARE AND DEVICE CONTEXT
+======================================================================
+
+The hardware design has been discussed as CEREPHYTE hardware Rev. 4.2. The hardware repository and schematic must be checked for the actual current state before assuming that every circuit is assembled or validated.
+
+Known design context includes:
+- Arduino Uno for part of the device control/acquisition system.
+- NodeMCU ESP-12E / ESP8266 for Wi-Fi connectivity.
+- ADS1115 external ADC; the current design notes identify default I2C address 0x48 and AIN0 as an acquisition input.
+- INA219 current/voltage monitoring over I2C; the design notes identify address 0x40.
+- Dual CD4051B analog multiplexers for channel selection.
+- AD620 instrumentation amplifier module in the analog front end.
+- OP07 / TL081-based analog filtering stages in the evolving schematic.
+- TXS0108E logic-level translation.
+- MAX485-based RS-485 interface.
+- Capacitive-touch modules have been considered in the device design.
+- The design target is eight differential signal inputs, with appropriate analog-ground/shielding practices. Confirm the actual connector pinout and signal path from the current schematic.
+- The ADS1115 acquisition rate discussed as a target is approximately 840 samples per second. This is a design target, not proof that the complete system achieves that rate end-to-end.
+
+Power design context for Rev. 4.2:
+- A 2-cell series lithium-ion battery pack is used in the design.
+- Charging and protection are provided by the selected charger/BMS arrangement.
+- An XL4015 buck module is intended to regulate battery voltage to a 5 V rail named VDD.
+- The current schematic discussion states that this regulated 5 V VDD bypasses the Arduino Uno onboard regulator.
+- INA219 is used for power monitoring.
+- Earlier schematic notes corrected the power net from PSOUT+ to VDD. Use the actual current schematic as authority and do not reintroduce obsolete net names.
+- Power filtering, grounding, module input limits, thermal behavior, battery protection, and analog noise must be validated on the actual build. Do not assume the design is safe or electrically validated merely because the schematic compiles.
+
+Important safety and measurement boundaries:
+- Never change hardware pin mappings, I2C addresses, channel wiring, power assumptions, or protocol semantics based on guesswork.
+- Do not present simulated signals as real plant measurements.
+- The dashboard must label simulation/demo data clearly.
+- Do not make the dashboard imply that the hardware's intended sampling rate is the achieved rate unless measured and verified.
+
+======================================================================
+5. DASHBOARD: CURRENTLY KNOWN CONTEXT
+======================================================================
+
+The current dashboard is a Streamlit application with a dark, scientific visual style. The existing machine can run the dashboard reliably. A simulation mode has been used to support development without depending on a fully connected device.
+
+Previously discussed/implemented dashboard capabilities include:
+- A dark scientific interface.
+- Eight-channel simulated live signal display.
+- Start/stop recording workflow.
+- Timestamped CSV export.
+- An ESP8266 Wi-Fi / HTTP / JSON integration scaffold.
+- An expected channel naming convention of CH1 through CH8 in the earlier integration scaffold.
+- A polling interval of about 0.5 seconds in the earlier scaffold.
+
+These details describe known earlier implementation context. Inspect the current code before assuming all are still present or implemented in the same way.
+
+A 0.5-second polling interval is suitable only as a coarse software integration/demo approach; it is not adequate to represent high-rate electrophysiology acquisition sample-by-sample. Do not conflate dashboard refresh frequency with the hardware's ADC sampling rate. If high-rate acquisition is required, the device should buffer/batch samples and the software should receive timestamped sample blocks using a documented transport format. Do not implement such a protocol without first checking the current firmware and agreeing on a format.
+
+The dashboard should support two distinct data sources:
+1. SIMULATION: generated data for interface development, demos, and tests.
+2. DEVICE: real data received from a connected CEREPHYTE device using the actual supported protocol.
+
+Never silently fall back from DEVICE to SIMULATION while showing the UI as if it were real data. If the device disconnects, show a visible status/error and preserve the distinction between real and simulated data.
+
+======================================================================
+6. EXPECTED DASHBOARD RESPONSIBILITIES
+======================================================================
+
+The dashboard is the user-facing control and visualization layer. Keep responsibilities organized and avoid putting every operation directly inside one large Streamlit script.
+
+A. Connection and device status
+- Allow the user to choose or configure a supported data source.
+- Show whether the application is in simulation or device mode.
+- Show connection state and useful error messages.
+- Show the selected device/transport information when known.
+- Do not invent endpoints, ports, URLs, message schemas, or device discovery behavior.
+
+B. Live visualization
+- Present channels clearly, with readable labels and units only when the units are known.
+- Keep plots responsive and avoid needless full-app reruns or repeated expensive computations.
+- Show missing/disconnected data honestly.
+- If a channel is unavailable, mark it unavailable instead of manufacturing a measurement.
+- Make it possible to distinguish channel identity and data-source mode.
+- Do not apply filtering or smoothing invisibly. If such processing is enabled, make it clear and preserve access to raw data where practical.
+
+C. Recording
+- Start and stop recording predictably.
+- Record timestamps and channel values with an explicitly documented time basis and schema.
+- Avoid losing buffered samples when recording ends.
+- Handle empty recordings, interrupted sessions, and write errors gracefully.
+- Do not claim lossless recording or precise timestamps without testing.
+- Keep recording behavior independent of whether optional AI is enabled.
+
+D. Data export and import
+- Support CSV export where already implemented or explicitly requested.
+- Keep column names stable and documented.
+- Include metadata such as source mode and session details when available, without inventing missing values.
+- Validate imported files and give helpful error messages.
+- Preserve data provenance: make clear whether data was simulated, device-acquired, or imported.
+
+E. Conventional analysis
+- Conventional signal processing and statistics should remain available without AI.
+- Examples may include summary statistics, signal-quality checks, plotting and analysis of recorded data.
+- Only add particular algorithms when their purpose, parameters, and expected behavior are defined.
+- Label processed data and units correctly.
+- Do not present statistical association as proof of causation or assign biological meaning without evidence.
+
+F. Simulation
+- Simulation is useful for development when hardware is not connected.
+- Keep simulated data generation separate from real-device acquisition.
+- Use reproducible test inputs where appropriate.
+- Clearly label simulated channels, simulated timestamps, and generated example recordings.
+- Do not use simulated data to claim hardware validation or scientific findings.
+
+G. Configuration
+- Put user-adjustable settings in a clear, validated configuration path.
+- Avoid hardcoding secrets, personal tokens, Wi-Fi credentials, or private endpoints.
+- Do not commit real credentials. Provide an example configuration file with placeholder values if configuration files are needed.
+- Keep defaults safe and make the source mode obvious.
+
+======================================================================
+7. OPTIONAL BUILT-IN AI FEATURE
+======================================================================
+
+AI is intended to be a built-in feature users can enable or disable. It is not required for basic operation.
+
+Required architectural principles:
+- The application must start and run its core features without AI libraries installed.
+- AI should be disabled by default unless the existing product decision explicitly changes this.
+- Load optional AI dependencies only when the feature is requested, where practical.
+- Provide a clear settings control for enabling/disabling AI.
+- When AI is disabled, the normal dashboard, acquisition, recording, export, and conventional statistics must continue to work.
+- AI errors must not stop or corrupt acquisition, recording, or ordinary visualization.
+- AI should consume explicitly defined input data and return structured results that the UI can validate and display.
+- The AI module should be separated behind a stable internal interface so providers or models can be changed without rewriting the dashboard.
+- Do not assume an online API, local model, cloud service, or specific provider until the user chooses one.
+- Do not hardcode API keys. Use a secure configuration method appropriate to the chosen provider.
+- Tell users when analysis is AI-generated and identify the input/session used.
+- Treat AI results as assistance, not unquestionable truth. Include uncertainty/limitations where appropriate.
+- Do not automatically send data to an external service without an explicit and visible user choice and clear disclosure.
+- If no AI provider is configured, explain how to configure one and keep the rest of the app usable.
+
+Possible future AI use cases, only after requirements are defined:
+- Summarizing a recorded session.
+- Explaining visible signal patterns cautiously.
+- Generating a report from selected data and conventional statistics.
+- Helping users inspect anomalies for further review.
+- Suggesting follow-up analyses.
+
+Do not create a separate repository for AI at this stage. Keep AI integration within CP_software as an optional subsystem.
+
+======================================================================
+8. DATA AND COMMUNICATION DESIGN RULES
+======================================================================
+
+The dashboard and firmware need an explicit interface contract. Before changing device communication, inspect the current firmware and protocol documentation.
+
+Known earlier scaffold detail: the dashboard integration expected channel labels CH1 through CH8 from an ESP8266 HTTP/JSON endpoint. Treat this as a historical/current scaffold detail to verify, not as a complete protocol specification.
+
+A production protocol should document, as applicable:
+- Transport and endpoint.
+- Message framing and version.
+- Channel identifiers and channel count.
+- Sample values and units.
+- Timestamps and their time basis.
+- Sample rate or sample timing information.
+- Batch/block format if multiple samples are sent together.
+- Missing/invalid sample representation.
+- Connection errors and reconnection behavior.
+- Firmware version and hardware revision identification.
+- Any checksum or integrity mechanism, if used.
+
+Do not invent any of the above fields. First locate the existing protocol implementation. If no authoritative protocol exists, propose a small specification and ask for agreement before implementing incompatible changes.
+
+Separate the software into clear logical responsibilities where practical:
+- Device/protocol client.
+- Data-source abstraction (simulation vs real device).
+- Data validation and normalization.
+- Recording and export.
+- Signal processing/statistics.
+- Optional AI integration.
+- Streamlit presentation layer.
+
+This is a conceptual separation, not a demand to create a large framework or every module immediately. Follow the repository's existing structure unless a task calls for a refactor.
+
+======================================================================
+9. STREAMLIT-SPECIFIC ENGINEERING GUIDANCE
+======================================================================
+
+Streamlit reruns application code in response to interactions. Copilot should understand the current state-management approach before modifying it.
+
+Guidelines:
+- Inspect current use of st.session_state and preserve its intended behavior.
+- Do not reset a recording, connection, or user configuration on every rerun.
+- Avoid starting duplicate polling loops, threads, or device connections during reruns.
+- If background work is used, implement its lifecycle and cleanup carefully and use a thread-safe approach for shared data.
+- Do not introduce timers, threads, async loops, or third-party state-management packages without a clear need.
+- Avoid unnecessary dependencies and expensive computations on every rerun.
+- Keep UI code separate from acquisition and data processing where practical.
+- Ensure start/stop controls have predictable behavior.
+- Handle missing packages and unavailable hardware gracefully.
+- Do not promise real-time guarantees that Streamlit and the transport implementation have not demonstrated.
+
+======================================================================
+10. QUALITY, TESTING, AND RELIABILITY
+======================================================================
+
+Every change should be testable without requiring physical hardware where practical.
+
+Suggested test categories:
+- Unit tests for data validation, timestamp handling, processing, and CSV serialization.
+- Simulation-mode smoke test.
+- Empty-data and malformed-data tests.
+- Device disconnect and reconnection tests.
+- Recording start/stop and export tests.
+- Optional AI disabled-mode test that verifies the app does not import or require AI-only dependencies.
+- AI failure test confirming that core functions continue working.
+- Protocol parsing tests using documented example messages.
+- UI startup test or a manual verification checklist.
+
+Do not claim tests passed unless they were actually run. Clearly distinguish:
+- Automated tests run.
+- Manual checks completed.
+- Hardware tests completed.
+- Features that remain unverified.
+
+Do not treat a successful Python import or a running Streamlit page as proof that the hardware data path works correctly.
+
+======================================================================
+11. USER EXPERIENCE AND PRESENTATION
+======================================================================
+
+The established visual direction is a dark, scientific dashboard. Keep it legible and functional rather than decorative.
+
+Priorities:
+- Clear visual hierarchy.
+- Readable channel plots and status indicators.
+- Obvious source mode: SIMULATION, DEVICE, or IMPORTED DATA.
+- Explicit recording state.
+- Useful, concise error messages.
+- Avoid overloading the page with too many panels.
+- Do not use a green “connected” indicator unless the connection has actually been verified.
+- Avoid implying that a signal is physiologically meaningful merely because it is plotted.
+- Make units visible only when known.
+- Make destructive or data-losing actions clear.
+
+The dashboard is intended to support research and learning. Do not add fake precision, unsupported biological labels, or unvalidated “health” interpretations.
+
+======================================================================
+12. DOCUMENTATION AND VERSIONING
+======================================================================
+
+The software repository should maintain:
+- README.md: purpose, supported environment, installation, launch instructions, modes, and known limitations.
+- CHANGELOG.md: notable user-facing and technical changes.
+- LICENSE: only after the intended license is confirmed and the official license text is added.
+- Example configuration file with placeholders, if needed.
+- Tests and test instructions.
+- Protocol/compatibility references.
+- Clear installation instructions that distinguish core requirements from optional AI dependencies.
+
+Known project history includes a CEREPHYTE changelog entry for version 4.5.0 dated 2026-10-16, and a hardware design discussed as Rev. 4.2. Do not assume the software version must equal the hardware revision. Check the repository's actual changelog and tags before changing version numbers.
+
+When changing behavior:
+- Update the changelog when appropriate.
+- Update documentation and tests.
+- Avoid silently breaking existing CSV formats or device integrations.
+- Explain migration steps for any incompatible changes.
+- Use clear commit messages and issue references where relevant.
+
+======================================================================
+13. SECURITY, PRIVACY, AND RESPONSIBLE CLAIMS
+======================================================================
+
+- Never commit passwords, Wi-Fi credentials, API keys, tokens, or private configuration.
+- Do not transmit research data externally without clear user awareness and consent.
+- Validate external input and imported files.
+- Handle malformed device data without crashing the app.
+- Avoid executing code or loading untrusted serialized objects from data files.
+- Do not label AI output as verified scientific truth.
+- Do not make medical or diagnostic claims.
+- Do not state that the device has been validated, calibrated, or tested unless the corresponding evidence exists.
+- Keep licensing notices and third-party attributions intact.
+
+======================================================================
+14. COPILOT WORKFLOW FOR FUTURE TASKS
+======================================================================
+
+For every feature request, Copilot should:
+
+1. Restate the intended behavior briefly.
+2. Inspect the relevant existing files and dependencies.
+3. Identify which layer owns the change: hardware documentation, firmware, or application software.
+4. List assumptions and identify unknown protocol/hardware details.
+5. Make the smallest reasonable change.
+6. Add or update tests for the behavior.
+7. Run available checks and report their real results.
+8. Update documentation/changelog when appropriate.
+9. Summarize files changed, user-visible effects, limitations, and anything not tested.
+
+If asked to implement a feature that depends on unknown hardware behavior or an undocumented protocol, do not fabricate the missing details. Inspect available resources and ask a focused clarification if necessary.
+
+Do not implement every item in this document automatically. It is context for making informed decisions, not a backlog or authorization to rewrite the project.
+
+======================================================================
+15. QUICK SUMMARY
+======================================================================
+
+CEREPHYTE is an ISLERI plant bioelectric data acquisition and analysis project composed of hardware, embedded firmware, and application software.
+
+The planned repository split is:
+- CP_hardware_resources: schematics, PCB, BOM, assembly, and hardware validation resources.
+- CP_firmware: microcontroller firmware, acquisition control, peripheral interfaces, and communication protocol.
+- CP_software: Streamlit dashboard, live visualization, recording/export, simulation, conventional analysis, and optional AI.
+
+The current dashboard is known to have a dark scientific style and a simulation-oriented workflow, with earlier work covering eight simulated channels, recording, CSV export, and an ESP8266 HTTP/JSON integration scaffold. Verify the current source before assuming exact implementation details.
+
+The most important engineering rules are:
+- Keep simulation clearly separate from real device data.
+- Do not confuse UI polling frequency with actual acquisition sampling rate.
+- Keep AI optional; core dashboard functionality must work without it.
+- Do not invent device endpoints, protocol fields, units, or hardware capabilities.
+- Preserve working behavior, test changes, and report what was actually verified.
+- Keep repository boundaries and version compatibility clear.
