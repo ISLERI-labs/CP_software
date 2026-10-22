@@ -3,7 +3,7 @@ import streamlit as st
 # Configure the dashboard
 st.set_page_config(
     page_title="ISLERI CEREPHYTE DASHBOARD",
-    page_icon="../images\logo.jpg",
+    page_icon="../images/logo.jpg",
     layout="wide"
 )
 
