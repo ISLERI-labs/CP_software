@@ -1,5 +1,9 @@
 # CP Software
 
+<p align="left">
+  <img src="images/isleri_logo.jpg" alt="ISLERI Labs organization logo" width="180">
+</p>
+
 This repository contains the software for the CerePhyte / CP measurement platform. It includes the dashboard and telemetry tooling used to monitor live data from the associated hardware system.
 
 ## Related repositories
