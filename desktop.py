@@ -1,4 +1,5 @@
-
+import ctypes
+from ctypes import wintypes
 import os
 import sys
 import time
@@ -131,6 +132,65 @@ def shutdown():
             pass
 
 
+
+def set_windows_icon():
+    if sys.platform != "win32":
+        return
+
+    icon_path = ROOT / "images" / "isleri.ico"
+    if not icon_path.is_file():
+        print(f"Icon not found: {icon_path}", file=sys.stderr)
+        return
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x0010
+    WM_SETICON = 0x0080
+    ICON_BIG = 1
+    ICON_SMALL = 0
+
+    user32.LoadImageW.restype = wintypes.HANDLE
+    user32.LoadImageW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPCWSTR,
+        wintypes.UINT,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    user32.SendMessageW.argtypes = [
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
+
+    icon = user32.LoadImageW(
+        None, str(icon_path), IMAGE_ICON, 0, 0, LR_LOADFROMFILE
+    )
+
+    if not icon:
+        print(
+            f"Could not load icon. Windows error: {ctypes.get_last_error()}",
+            file=sys.stderr,
+        )
+        return
+
+    try:
+        native_handle = webview.windows[0].native.Handle
+        hwnd_value = native_handle.ToInt64()
+        hwnd = wintypes.HWND(hwnd_value)
+
+        user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, icon)
+        user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, icon)
+        print("CerePhyte window icon applied.")
+    except Exception as exc:
+        print(f"Could not apply window icon: {exc}", file=sys.stderr)
+
+
 def main():
     if not (ROOT / "app.py").is_file():
         raise FileNotFoundError(f"Missing dashboard: {ROOT / 'app.py'}")
@@ -183,6 +243,7 @@ def main():
         )
 
         window.events.closed += shutdown
+        window.events.shown += set_windows_icon
         webview.start()
 
     finally:

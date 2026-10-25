@@ -1,4 +1,26 @@
-CerePhyte_Dashboard/cerephyte_history.csv
-/CerePhyte_Dashboard/__pycache__
+# Python cache
+__pycache__/
+*.py[cod]
+
+# CerePhyte local telemetry/history data
 cerephyte_history.csv
-/__pycache__
+CerePhyte_Dashboard/cerephyte_history.csv
+state/
+*.log
+
+# Python virtual environments
+.venv/
+venv/
+
+# Build output and installer packages
+build/
+dist/
+
+# Local environment settings
+.env
+.env.*
+
+# IDE and OS files
+.vscode/
+.DS_Store
+Thumbs.db

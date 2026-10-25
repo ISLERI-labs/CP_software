@@ -1,3 +1,4 @@
+import os
 import csv
 import time
 from datetime import datetime, timezone
@@ -9,7 +10,16 @@ import requests
 import streamlit as st
 
 APP_DIR = Path(__file__).resolve().parent
-CSV_PATH = APP_DIR / "cerephyte_history.csv"
+
+# Store writable user data outside the installation directory.
+APP_DATA_DIR = (
+    Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+    / "CerePhyte"
+    / "state"
+)
+APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+CSV_PATH = APP_DATA_DIR / "cerephyte_history.csv"
 CSV_COLUMNS = ["captured_at", "sample", "mux1_channel", "mux2_channel", "voltage", "bat", "curr", "t2", "t3", "age_ms"]
 DEFAULT_API = "http://127.0.0.1:8000/telemetry"
 FASTAPI_BASE = "http://127.0.0.1:8000"
