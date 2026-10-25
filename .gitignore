@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python cache
 __pycache__/
 *.py[cod]
@@ -24,3 +25,7 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+=======
+CerePhyte_Dashboard/cerephyte_history.csv
+/CerePhyte_Dashboard/__pycache__
+>>>>>>> parent of b433f58 (Move dashboard to root and add desktop launcher)

@@ -34,8 +34,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 :root { color-scheme: dark; }
-.block-container { padding-top: 3.75rem; padding-bottom: 2rem; max-width: 1600px; }
-[data-testid="stHeader"] { background: rgba(10, 15, 22, 0.92); }
+.block-container { padding-top: 1.1rem; padding-bottom: 2rem; max-width: 1600px; }
 [data-testid="stAppViewContainer"] { background: #0a0f16; }
 [data-testid="stSidebar"] { background: #101824; border-right: 1px solid #233044; }
 .hero {
@@ -244,7 +243,7 @@ st.markdown("""
 <div class="hero">
   <div class="eyebrow">ISLERI · BIOSIGNAL INSTRUMENTATION</div>
   <h1>CerePhyte <span style="color:#71dfbd">/</span> Live Console</h1>
-  <p>Rev 5 · Local telemetry · Independent Dual-MUX monitoring with persistent history</p>
+  <p>Rev. 4.5 · Local telemetry · Independent Dual-MUX monitoring with persistent history</p>
 </div>
 """, unsafe_allow_html=True)
 

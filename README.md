@@ -13,7 +13,27 @@ This repository contains the software for the CerePhyte / CP measurement platfor
 
 ## Overview
 
-The current codebase includes a dashboard application for displaying live telemetry, plotting A0 data, recording CSV history, and interacting with a local FastAPI backend.
+The current codebase includes a dashboard application for displaying live telemetry, plotting A0 data, recording CSV history, and interacting with a local FastAPI backend. The main software entry point is located in the `CerePhyte_Dashboard/` folder.
+
+## Repository structure
+
+```text
+CP_software/
+├── CerePhyte_Dashboard/
+│   ├── app.py
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── run.bat
+│   ├── README.md
+│   └── cerephyte_history.csv
+├── images/
+├── .gitignore
+└── README.md
+```
+
+## Quick start
+
+From the `CerePhyte_Dashboard/` directory:
 
 ### Windows
 
