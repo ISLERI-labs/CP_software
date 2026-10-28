@@ -66,4 +66,10 @@ This software repository is intended to work alongside the hardware resources re
 
 ## License
 
-This project does not currently declare a repository-specific license file. Please refer to the organization or repository policy for usage terms.
+Copyright and License
+
+Copyright © 2026 Omm Prakash Das.
+
+This repository's original software is licensed under the Apache License, Version 2.0. See "LICENSE" (LICENSE) for the full license text.
+
+Third-party components remain subject to their respective licenses.
