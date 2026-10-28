@@ -1,5 +1,7 @@
-import os
+import base64
 import csv
+import json
+import os
 import time
 from datetime import datetime, timezone
 from html import escape
@@ -11,6 +13,8 @@ import requests
 import streamlit as st
 
 APP_DIR = Path(__file__).resolve().parent
+LOGO_PATH = APP_DIR / "isleri_logo.jpg"
+LOGO_DATA_URI = "data:image/jpeg;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
 
 # Store writable user data outside the installation directory.
 APP_DATA_DIR = (
@@ -21,9 +25,20 @@ APP_DATA_DIR = (
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CSV_PATH = APP_DATA_DIR / "cerephyte_history.csv"
+CONFIG_PATH = APP_DATA_DIR / "dashboard_config.json"
 CSV_COLUMNS = ["captured_at", "sample", "mux1_channel", "mux2_channel", "voltage", "bat", "curr", "t2", "t3", "age_ms"]
 DEFAULT_API = "http://127.0.0.1:8000/telemetry"
 FASTAPI_BASE = "http://127.0.0.1:8000"
+REFRESH_OPTIONS = [250, 350, 500, 750, 1000, 10000, 600000]
+HISTORY_OPTIONS = [10, 30, 60, 120, 300, 600, 3600]
+THEME_OPTIONS = ("CerePhyte Blue", "ISLERI Gradient")
+DEFAULT_SETTINGS = {
+    "background_theme": "CerePhyte Blue",
+    "refresh_ms": 350,
+    "history_seconds": 60,
+    "sidebar_mux1": 0,
+    "sidebar_mux2": 0,
+}
 
 st.set_page_config(
     page_title="CerePhyte | Live Instrumentation",
@@ -36,41 +51,117 @@ st.markdown("""
 <style>
 :root { color-scheme: dark; }
 .block-container { padding-top: 3.75rem; padding-bottom: 2rem; max-width: 1600px; }
-[data-testid="stHeader"] { background: rgba(10, 15, 22, 0.92); }
-[data-testid="stAppViewContainer"] { background: #0a0f16; }
-[data-testid="stSidebar"] { background: #101824; border-right: 1px solid #233044; }
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stAppViewContainer"] { background: var(--app-background); }
+[data-testid="stSidebar"] {
+  background: var(--sidebar-background);
+  border-right: 1px solid var(--theme-border);
+}
 .hero {
-  padding: 1.15rem 1.4rem; border: 1px solid #26364a; border-radius: 18px;
-  background: linear-gradient(120deg, #142233 0%, #101923 65%, #10221f 100%);
-  margin-bottom: 1rem;
+  padding: 1.15rem 1.4rem; border: 1px solid var(--theme-border); border-radius: 18px;
+  background: var(--hero-background); margin-bottom: 1rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .14);
 }
-.eyebrow { color: #71dfbd; font-size: .76rem; font-weight: 700; letter-spacing: .16em; }
+.brand-lockup { display: flex; align-items: center; gap: .55rem; margin-bottom: .45rem; }
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; flex: none;
+  filter: drop-shadow(0 0 10px rgba(98, 150, 250, .4));
+}
+.brand-logo {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+  padding: .12rem; border-radius: .45rem; background: #fff;
+}
+.brand-name { color: #f2f7fc; font-size: .82rem; font-weight: 800; letter-spacing: .2em; }
+.eyebrow { color: var(--theme-accent); font-size: .76rem; font-weight: 700; letter-spacing: .16em; }
 .hero h1 { margin: .25rem 0 .15rem 0; font-size: 2rem; color: #f2f7fc; }
-.hero p { margin: 0; color: #9fb1c5; }
+.hero p { margin: 0; color: #b6c8df; }
 div[data-testid="stMetric"] {
-  background: #111b28; border: 1px solid #243449; border-radius: 14px;
-  padding: .8rem 1rem;
+  background: var(--panel-background); border: 1px solid var(--theme-border);
+  border-radius: 14px; padding: .8rem 1rem;
 }
-div[data-testid="stMetricLabel"] { color: #9fb1c5; }
+div[data-testid="stMetricLabel"] { color: #b6c8df; }
 div[data-testid="stMetricValue"] { color: #edf5ff; }
 .panel {
-  border: 1px solid #243449; border-radius: 15px; padding: 1rem 1.1rem;
-  background: #0f1722; margin-bottom: .7rem;
+  border: 1px solid var(--theme-border); border-radius: 15px; padding: 1rem 1.1rem;
+  background: var(--panel-background); margin-bottom: .7rem;
 }
-.small-muted { color: #93a5ba; font-size: .86rem; }
+.small-muted { color: #b6c8df; font-size: .86rem; }
 .status-card {
   display: flex; flex-direction: column; gap: .2rem;
-  border: 1px solid #2a3d51; border-radius: 14px;
+  border: 1px solid var(--theme-border); border-radius: 14px;
   padding: .8rem 1rem; margin: .75rem 0 1rem 0;
-  background: linear-gradient(135deg, rgba(23, 35, 48, 0.95), rgba(13, 20, 29, 0.9));
+  background: var(--panel-background);
 }
-.status-kicker { color: #71dfbd; font-size: .7rem; text-transform: uppercase; letter-spacing: .16em; font-weight: 700; }
+.status-kicker { color: var(--theme-accent); font-size: .7rem; text-transform: uppercase; letter-spacing: .16em; font-weight: 700; }
 .status-value { font-size: 1.25rem; font-weight: 700; }
 .status-good { border-color: rgba(87, 214, 170, 0.7); box-shadow: inset 0 0 0 1px rgba(87, 214, 170, 0.2); }
 .status-bad { border-color: rgba(255, 153, 102, 0.7); box-shadow: inset 0 0 0 1px rgba(255, 153, 102, 0.2); }
-.status-detail { color: #9fb1c5; font-size: .9rem; }
+.status-detail { color: #b6c8df; font-size: .9rem; }
+.loading-splash {
+  position: fixed; inset: 0; z-index: 999999; display: grid; place-items: center;
+  overflow: hidden; background: rgba(5, 10, 24, .96); backdrop-filter: blur(18px);
+}
+.loading-splash::before {
+  content: ""; position: absolute; inset: -60%;
+  background: linear-gradient(110deg, transparent 35%, rgba(120, 75, 255, .36) 48%,
+    rgba(98, 150, 250, .42) 57%, rgba(85, 212, 230, .32) 66%, transparent 78%);
+  background-size: 220% 100%; animation: brand-gradient-flow 3.4s ease-in-out infinite alternate;
+}
+.loading-content { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.loading-logo { display: flex; align-items: center; gap: .75rem; color: #fff; }
+.loading-logo .brand-mark { width: 3rem; height: 3rem; }
+.loading-logo .brand-name { font-size: 1.25rem; letter-spacing: .28em; }
+.loading-ring {
+  width: 2rem; height: 2rem; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .18); border-top-color: #55d4e6;
+  border-right-color: #784bff; animation: loader-spin .9s linear infinite;
+}
+.loading-caption { color: #c2cee2; font-size: .9rem; letter-spacing: .04em; }
+@keyframes brand-gradient-flow {
+  from { transform: translateX(-8%) rotate(-7deg); background-position: 0% 50%; }
+  to { transform: translateX(8%) rotate(7deg); background-position: 100% 50%; }
+}
+@keyframes loader-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-splash::before, .loading-ring { animation-duration: 8s; }
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+def load_dashboard_settings():
+    settings = DEFAULT_SETTINGS.copy()
+    try:
+        with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+            stored_settings = json.load(config_file)
+    except FileNotFoundError:
+        return settings, None
+    except (OSError, ValueError) as exc:
+        return settings, f"Could not read dashboard settings; using defaults: {exc}"
+
+    if not isinstance(stored_settings, dict):
+        return settings, "Dashboard settings must contain a JSON object; using defaults."
+
+    if stored_settings.get("background_theme") in THEME_OPTIONS:
+        settings["background_theme"] = stored_settings["background_theme"]
+    if stored_settings.get("refresh_ms") in REFRESH_OPTIONS:
+        settings["refresh_ms"] = stored_settings["refresh_ms"]
+    if stored_settings.get("history_seconds") in HISTORY_OPTIONS:
+        settings["history_seconds"] = stored_settings["history_seconds"]
+    for key in ("sidebar_mux1", "sidebar_mux2"):
+        value = stored_settings.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 7:
+            settings[key] = value
+    return settings, None
+
+
+def save_dashboard_settings(settings):
+    temporary_path = CONFIG_PATH.with_suffix(".tmp")
+    with temporary_path.open("w", encoding="utf-8") as config_file:
+        json.dump(settings, config_file, indent=2)
+        config_file.write("\n")
+    temporary_path.replace(CONFIG_PATH)
 
 
 def init_csv():
@@ -194,27 +285,33 @@ def make_voltage_chart(df):
 
 
 init_csv()
+saved_settings, settings_warning = load_dashboard_settings()
+for setting_name, setting_value in saved_settings.items():
+    st.session_state.setdefault(setting_name, setting_value)
 
 with st.sidebar:
     st.markdown("## ⚙️ Acquisition")
+    background_theme = st.radio(
+        "Dashboard background",
+        THEME_OPTIONS,
+        key="background_theme",
+    )
     api_url = st.text_input("FastAPI telemetry URL", value=st.session_state.get("api_url", DEFAULT_API))
     st.session_state["api_url"] = api_url
     
     refresh_ms = st.select_slider(
         "Dashboard refresh",
-        options=[250, 350, 500, 750, 1000,10000,600000],
-        value=st.session_state.get("refresh_ms", 350),
+        options=REFRESH_OPTIONS,
         format_func=lambda x: f"{x} ms",
+        key="refresh_ms",
     )
-    st.session_state["refresh_ms"] = refresh_ms
     
     history_seconds = st.select_slider(
         "Graph time window",
-        options=[10, 30, 60, 120, 300, 600,3600],
-        value=st.session_state.get("history_seconds", 60),
+        options=HISTORY_OPTIONS,
         format_func=lambda x: f"{x} seconds" if x < 60 else f"{x // 60} min" if x % 60 == 0 else f"{x} seconds",
+        key="history_seconds",
     )
-    st.session_state["history_seconds"] = history_seconds
     
     st.divider()
     st.markdown("### 🎛️ Dual-MUX Control")
@@ -252,18 +349,71 @@ with st.sidebar:
         st.rerun()
     st.caption("History is stored on this computer in `cerephyte_history.csv`.")
 
-st.markdown("""
+try:
+    save_dashboard_settings({name: st.session_state[name] for name in DEFAULT_SETTINGS})
+except OSError as exc:
+    st.error(f"Could not save dashboard settings: {exc}")
+if settings_warning:
+    st.warning(settings_warning)
+
+theme_styles = {
+    "CerePhyte Blue": """
+      :root {
+        --app-background: radial-gradient(ellipse at 82% 12%, rgba(0, 153, 255, .25), transparent 38%),
+          linear-gradient(135deg, #061735 0%, #074b91 52%, #071d4b 100%);
+        --sidebar-background: linear-gradient(180deg, #07376e, #082755 72%, #071d43);
+        --hero-background: linear-gradient(120deg, rgba(7, 45, 93, .92), rgba(6, 25, 60, .92));
+        --panel-background: rgba(6, 24, 57, .78);
+        --theme-border: rgba(100, 175, 255, .25);
+        --theme-accent: #45dbea;
+      }
+    """,
+    "ISLERI Gradient": """
+      :root {
+        --app-background: radial-gradient(ellipse at 12% 10%, rgba(120, 75, 255, .32), transparent 36%),
+          radial-gradient(ellipse at 88% 82%, rgba(85, 212, 230, .25), transparent 38%),
+          linear-gradient(115deg, #171333 0%, #20234c 48%, #102e43 100%);
+        --sidebar-background: linear-gradient(180deg, rgba(22, 21, 53, .98), rgba(11, 33, 54, .98));
+        --hero-background: linear-gradient(110deg, rgba(120, 75, 255, .20), rgba(98, 150, 250, .16), rgba(85, 212, 230, .16));
+        --panel-background: rgba(13, 19, 42, .78);
+        --theme-border: rgba(148, 166, 255, .28);
+        --theme-accent: #79d8ec;
+      }
+    """,
+}
+st.markdown(f"<style>{theme_styles[background_theme]}</style>", unsafe_allow_html=True)
+
+st.markdown(f"""
 <div class="hero">
+  <div class="brand-lockup"><span class="brand-mark"><img class="brand-logo" src="{LOGO_DATA_URI}" alt="ISLERI logo"></span><span class="brand-name">ISLERI</span></div>
   <div class="eyebrow">ISLERI · BIOSIGNAL INSTRUMENTATION</div>
   <h1>CerePhyte <span style="color:#71dfbd">/</span> Live Console</h1>
   <p>Rev:5 · Local telemetry · Independent Dual-MUX monitoring with persistent history</p>
 </div>
 """, unsafe_allow_html=True)
 
+st.session_state.setdefault("initial_loading", True)
+
 
 @st.fragment(run_every=f"{refresh_ms}ms")
 def live_panel():
+    loading_screen = None
+    if st.session_state["initial_loading"]:
+        loading_screen = st.empty()
+        loading_screen.markdown(f"""
+        <div class="loading-splash">
+          <div class="loading-content">
+            <div class="loading-logo"><span class="brand-mark"><img class="brand-logo" src="{LOGO_DATA_URI}" alt="ISLERI logo"></span><span class="brand-name">ISLERI</span></div>
+            <div class="loading-ring"></div>
+            <div class="loading-caption">Connecting to your CerePhyte instrument</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     data, good, error = get_latest_sample()
+    if loading_screen is not None:
+        st.session_state["initial_loading"] = False
+        loading_screen.empty()
 
     if good:
         current_draw = float(data.get("curr", 0.0))

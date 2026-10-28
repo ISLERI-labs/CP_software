@@ -5,6 +5,10 @@
 - A0-only live graph.
 - Local CSV recording in `cerephyte_history.csv` (no SQLite database).
 - Adjustable refresh interval and graph window; CSV export.
+- Selectable CerePhyte blue and ISLERI violet-to-cyan dashboard backgrounds.
+- Animated ISLERI-branded loading screen while the dashboard connects on first load.
+- ISLERI logo image is loaded from `isleri_logo.jpg` in this folder.
+- Dashboard preferences (background, refresh interval, graph window, and selected MUX channels) are stored separately from history in `%LOCALAPPDATA%\CerePhyte\state\dashboard_config.json` on Windows.
 - `run.bat` launches FastAPI and Streamlit together on Windows.
 - `run.sh` is included for Bash / Git Bash / WSL users.
 
