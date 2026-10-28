@@ -1,16 +1,33 @@
-# CerePhyte Rev. 4.5 Dashboard
+# CerePhyte Dashboard
 
 ## Included
 - Live telemetry cards for sample, A0, battery, current, T2, T3/LED and packet age.
-- A0-only live graph.
-- Local CSV recording in `cerephyte_history.csv` (no SQLite database).
+- Local CSV recording (no SQLite database).
 - Adjustable refresh interval and graph window; CSV export.
+- Selectable ADS1115 voltage, battery voltage, current consumption, and derived signal-strength series.
+- Scientific graph views: line, smoothed trend, time/amplitude-density heatmap, value distribution, and FFT spectrum.
+- Raw, FFT, and fourth-order Butterworth low/high/band-pass filters, plus Daubechies-4 wavelet denoising. Filter cutoffs are entered in Hz; frequency-domain modes resample recorded telemetry to its median interval.
+- Chart calculation runs separately from fast live telemetry polling, refreshes every two seconds, and displays an ISLERI-branded animated loading panel with operation-specific status text while preparing a chart.
+- Chart analysis uses at most 3,000 points; resampling that would exceed this limit is rejected with a clear message. Work is bounded rather than spawning extra processes for small signals.
 - Selectable CerePhyte blue and ISLERI violet-to-cyan dashboard backgrounds.
 - Animated ISLERI-branded loading screen while the dashboard connects on first load.
 - ISLERI logo image is loaded from `isleri_logo.jpg` in this folder.
-- Dashboard preferences (background, refresh interval, graph window, and selected MUX channels) are stored separately from history in `%LOCALAPPDATA%\CerePhyte\state\dashboard_config.json` on Windows.
+- Dashboard preferences (background, refresh interval, graph window, selected MUX channels, chart series/mode/filter, and filter cutoffs) are stored separately from history in `%LOCALAPPDATA%\CerePhyte\state\dashboard_config.json` on Windows.
+- On Windows, CSV history is stored at `%LOCALAPPDATA%\CerePhyte\state\cerephyte_history.csv`.
 - `run.bat` launches FastAPI and Streamlit together on Windows.
 - `run.sh` is included for Bash / Git Bash / WSL users.
+
+## ISLERI development update
+
+**CerePhyte Dashboard — Scientific Charting & Performance Improvements**
+
+- 📊 Choose among ADS1115 voltage, battery voltage, current consumption, and derived signal strength.
+- 🔬 Use line, smoothed trend, time-amplitude heatmap, distribution, or FFT spectrum views.
+- 🎛️ Apply raw, FFT, Butterworth, or Daubechies-4 wavelet processing.
+- 🌌 View an animated ISLERI-branded chart loading panel with status text matched to the selected calculation.
+- ⚡ Keep chart refreshes independent of live telemetry polling, with bounded data processing to help avoid long or excessive calculations.
+
+Signal strength is derived from ADS1115 voltage variation and is not an independent sensor reading. NumPy, SciPy, and PyWavelets are listed in `requirements.txt`; install the updated requirements to enable all filter options.
 
 ## Windows setup
 

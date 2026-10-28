@@ -13,7 +13,20 @@ This repository contains the software for the CerePhyte / CP measurement platfor
 
 ## Overview
 
-The current codebase includes a dashboard application for displaying live telemetry, plotting A0 data, recording CSV history, and interacting with a local FastAPI backend. The main software entry point is located in the `CerePhyte_Dashboard/` folder.
+The current codebase includes a dashboard application for displaying live telemetry, exploring saved signals with scientific chart views and filters, recording CSV history, and interacting with a local FastAPI backend. The main software entry point is located in the `CerePhyte_Dashboard/` folder.
+
+## ISLERI development update
+
+**CerePhyte Dashboard — Scientific Charting & Performance Improvements**
+
+- Select ADS1115 voltage, battery voltage, current consumption, or derived signal strength.
+- Explore data using line, smoothed trend, time-amplitude heatmap, value distribution, and FFT spectrum views.
+- Choose raw data, FFT or Butterworth low/high/band-pass filters, or Daubechies-4 wavelet denoising.
+- See an animated ISLERI-branded loading panel with calculation-specific status messages while charts are prepared.
+- Keep live telemetry responsive while chart updates run separately; bounded chart history and resampling help prevent excessive work.
+- Retain selectable CerePhyte Blue and ISLERI Gradient themes, with dashboard preferences stored separately from history.
+
+The derived signal-strength series is calculated from ADS1115 voltage variation; it is not a separate sensor measurement. See the [dashboard README](CerePhyte_Dashboard/README.md) and [software reference](docs/software-reference.md) for details.
 
 ## Repository structure
 
@@ -25,7 +38,11 @@ CP_software/
 │   ├── requirements.txt
 │   ├── run.bat
 │   ├── README.md
-│   └── cerephyte_history.csv
+│   └── isleri_logo.jpg
+├── docs/
+│   ├── README.md
+│   ├── getting-started.md
+│   └── software-reference.md
 ├── images/
 ├── .gitignore
 └── README.md
@@ -54,7 +71,7 @@ http://localhost:8501
 
 - `run.bat` starts the FastAPI backend and the Streamlit dashboard together.
 - The dashboard reads telemetry from `http://127.0.0.1:8000/telemetry` by default.
-- Logged CSV data is saved locally in `cerephyte_history.csv`.
+- Logged CSV history and dashboard preferences are stored under `%LOCALAPPDATA%\CerePhyte\state\` on Windows.
 
 ## Documentation
 

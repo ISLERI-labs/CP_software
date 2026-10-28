@@ -42,18 +42,25 @@ Set the requested MUX channel by forwarding the request to the corresponding Nod
 ## Dashboard behavior
 
 - The sidebar refresh selector supports 250, 350, 500, 750, and 1000 ms; the default is 350 ms.
-- The graph window can be set to 10, 30, 60, 120, 300, or 600 seconds; the default is 60 seconds.
+- The graph window can be set to 10, 30, 60, 120, 300, 600, or 3,600 seconds; the default is 60 seconds.
 - The live panel displays MUX channels, ADS1115 voltage, battery voltage, sample counter, T2/T3 state, packet age, and the latest JSON payload.
-- The live chart plots ADS1115 voltage against UTC capture time.
+- The chart independently refreshes every two seconds, separate from the live telemetry panel.
+- Available series are ADS1115 voltage, battery voltage, current consumption, and signal strength derived as a rolling 10-sample RMS deviation of ADS1115 voltage.
+- Available chart modes are line, smoothed trend, time-amplitude heatmap, value distribution, and frequency spectrum (FFT).
+- Filters include raw (unfiltered), FFT low/high/band-pass, fourth-order Butterworth low/high/band-pass, and Daubechies-4 wavelet denoising. Filter cutoffs are entered in Hz and must be below the estimated Nyquist frequency; band-pass requires the low cutoff to be less than the high cutoff.
+- The chart area shows an animated ISLERI-branded loading panel with status text describing the current calculation. It clears when rendering finishes and chart errors are reported in the panel.
+- Recent chart history and analysis are bounded to 3,000 points. Resampling requests that would exceed the point limit are rejected rather than allocating an unbounded array.
 - The history section displays up to the latest 10,000 saved rows and provides a CSV download.
 - MUX controls expose channels 0 through 7.
 - **Clear saved history** truncates the local CSV and writes its header again.
 
 The sidebar's telemetry URL customizes telemetry reads. MUX controls currently use the fixed FastAPI base URL `http://127.0.0.1:8000`.
 
+The dashboard displays an ISLERI-branded startup screen on the first app load. Dashboard preferences are stored separately from measurement history in `%LOCALAPPDATA%\CerePhyte\state\dashboard_config.json` on Windows. Preferences include theme, refresh interval, graph window, MUX selections, chart series/mode/filter, and filter cutoffs.
+
 ## CSV history
 
-The application creates `cerephyte_history.csv` beside `app.py` if it does not exist or is empty. Columns are:
+On Windows, the application stores `cerephyte_history.csv` under `%LOCALAPPDATA%\CerePhyte\state\`. Columns are:
 
 `captured_at`, `sample`, `mux1_channel`, `mux2_channel`, `voltage`, `bat`, `curr`, `t2`, `t3`, `age_ms`
 
@@ -63,5 +70,4 @@ The graph reads recent CSV rows and limits its working set to 3,000 rows. The hi
 
 ## Dependencies
 
-Dependencies and their minimum versions are listed in `CerePhyte_Dashboard/requirements.txt`: Streamlit, Plotly, pandas, requests, FastAPI, Uvicorn, and httpx.
-
+Dependencies and their minimum versions are listed in `CerePhyte_Dashboard/requirements.txt`: Streamlit, Plotly, pandas, NumPy, SciPy, PyWavelets, requests, FastAPI, Uvicorn, and httpx. SciPy enables Butterworth filtering and PyWavelets enables wavelet denoising.

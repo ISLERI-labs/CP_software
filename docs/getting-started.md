@@ -42,7 +42,9 @@ Open the dashboard at <http://localhost:8501>. The API's interactive OpenAPI doc
 - The API polls `http://192.168.4.1/api/data` every 200 ms. The NodeMCU address is currently configured in `main.py`.
 - The dashboard's telemetry URL defaults to `http://127.0.0.1:8000/telemetry`; it can be changed in the dashboard sidebar.
 - MUX control requests use `http://127.0.0.1:8000` as the FastAPI base URL.
-- The dashboard stores history in `CerePhyte_Dashboard/cerephyte_history.csv`.
+- On Windows, dashboard history and preferences are stored separately under `%LOCALAPPDATA%\CerePhyte\state\` as `cerephyte_history.csv` and `dashboard_config.json`. On other platforms, the same files are stored under `~/CerePhyte/state/`.
+- The dashboard remembers theme, refresh interval, graph window, MUX selections, chart series/mode/filter, and filter cutoffs.
+- Install dependencies from the updated `requirements.txt` to enable SciPy Butterworth filters and PyWavelets denoising.
 
 ## Troubleshooting
 
@@ -52,4 +54,3 @@ Open the dashboard at <http://localhost:8501>. The API's interactive OpenAPI doc
 - **MUX control fails:** Check that the API is running at `127.0.0.1:8000` and that the requested channel is between 0 and 7 inclusive.
 
 The launcher binds the API to `0.0.0.0`, making it reachable on network interfaces. Use it only on a trusted network; the API does not implement authentication.
-
