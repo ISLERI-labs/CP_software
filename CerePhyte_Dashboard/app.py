@@ -34,7 +34,8 @@ st.set_page_config(
 st.markdown("""
 <style>
 :root { color-scheme: dark; }
-.block-container { padding-top: 1.1rem; padding-bottom: 2rem; max-width: 1600px; }
+.block-container { padding-top: 3.75rem; padding-bottom: 2rem; max-width: 1600px; }
+[data-testid="stHeader"] { background: rgba(10, 15, 22, 0.92); }
 [data-testid="stAppViewContainer"] { background: #0a0f16; }
 [data-testid="stSidebar"] { background: #101824; border-right: 1px solid #233044; }
 .hero {
