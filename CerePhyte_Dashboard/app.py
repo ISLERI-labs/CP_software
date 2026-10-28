@@ -2,6 +2,7 @@ import os
 import csv
 import time
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +58,17 @@ div[data-testid="stMetricValue"] { color: #edf5ff; }
   background: #0f1722; margin-bottom: .7rem;
 }
 .small-muted { color: #93a5ba; font-size: .86rem; }
+.status-card {
+  display: flex; flex-direction: column; gap: .2rem;
+  border: 1px solid #2a3d51; border-radius: 14px;
+  padding: .8rem 1rem; margin: .75rem 0 1rem 0;
+  background: linear-gradient(135deg, rgba(23, 35, 48, 0.95), rgba(13, 20, 29, 0.9));
+}
+.status-kicker { color: #71dfbd; font-size: .7rem; text-transform: uppercase; letter-spacing: .16em; font-weight: 700; }
+.status-value { font-size: 1.25rem; font-weight: 700; }
+.status-good { border-color: rgba(87, 214, 170, 0.7); box-shadow: inset 0 0 0 1px rgba(87, 214, 170, 0.2); }
+.status-bad { border-color: rgba(255, 153, 102, 0.7); box-shadow: inset 0 0 0 1px rgba(255, 153, 102, 0.2); }
+.status-detail { color: #9fb1c5; font-size: .9rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -190,7 +202,7 @@ with st.sidebar:
     
     refresh_ms = st.select_slider(
         "Dashboard refresh",
-        options=[250, 350, 500, 750, 1000],
+        options=[250, 350, 500, 750, 1000,10000,600000],
         value=st.session_state.get("refresh_ms", 350),
         format_func=lambda x: f"{x} ms",
     )
@@ -198,7 +210,7 @@ with st.sidebar:
     
     history_seconds = st.select_slider(
         "Graph time window",
-        options=[10, 30, 60, 120, 300, 600],
+        options=[10, 30, 60, 120, 300, 600,3600],
         value=st.session_state.get("history_seconds", 60),
         format_func=lambda x: f"{x} seconds" if x < 60 else f"{x // 60} min" if x % 60 == 0 else f"{x} seconds",
     )
@@ -244,7 +256,7 @@ st.markdown("""
 <div class="hero">
   <div class="eyebrow">ISLERI · BIOSIGNAL INSTRUMENTATION</div>
   <h1>CerePhyte <span style="color:#71dfbd">/</span> Live Console</h1>
-  <p>Rev. 4.5 · Local telemetry · Independent Dual-MUX monitoring with persistent history</p>
+  <p>Rev:5 · Local telemetry · Independent Dual-MUX monitoring with persistent history</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -254,11 +266,24 @@ def live_panel():
     data, good, error = get_latest_sample()
 
     if good:
+        current_draw = float(data.get("curr", 0.0))
+        status_text = "System online"
+        status_detail = (
+            f"Live telemetry · Sample #{int(data['sample']):,} · "
+            f"Battery draw {current_draw:.3f} ma · Packet age {int(data.get('age_ms') or 0):,} ms"
+        )
+        status_class = "status-good"
         try:
             save_if_new(data)
         except OSError as exc:
             st.error(f"Could not save history: {exc}")
 
+        st.markdown(
+            f'<div class="status-card {status_class}"><div class="status-kicker">Current status</div>'
+            f'<div class="status-value">{escape(status_text)}</div>'
+            f'<div class="status-detail">{escape(status_detail)}</div></div>',
+            unsafe_allow_html=True,
+        )
         st.success("LIVE · FastAPI connected · Newest complete telemetry snapshot")
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("MUX 1 Ch", int(data["mux1_channel"]))
@@ -267,11 +292,12 @@ def live_panel():
         c4.metric("Battery", f"{float(data['bat']):.2f} V")
         c5.metric("Sample counter", f"{int(data['sample']):,}")
 
-        c6, c7, c8 = st.columns(3)
-        c6.metric("Touch T2", "HIGH" if int(data["t2"]) else "LOW")
-        c7.metric("Touch T3 / LED", "HIGH · LED ON" if int(data["t3"]) else "LOW · LED OFF")
+        c6, c7, c8, c9 = st.columns(4)
+        c6.metric("Battery current", f"{current_draw:.3f} ma")
+        c7.metric("Touch T2", "HIGH" if int(data["t2"]) else "LOW")
+        c8.metric("Touch T3 / LED", "HIGH · LED ON" if int(data["t3"]) else "LOW · LED OFF")
         age = data.get("age_ms")
-        c8.metric("Packet age", f"{int(age)} ms" if age is not None else "—")
+        c9.metric("Packet age", f"{int(age)} ms" if age is not None else "—")
 
         df = load_history(history_seconds)
         st.markdown("### Live signal · ADS1115 A0 Voltage")
@@ -285,6 +311,15 @@ def live_panel():
         with st.expander("Latest JSON payload"):
             st.json(data)
     else:
+        status_text = "System offline"
+        status_detail = error or "No live telemetry available"
+        status_class = "status-bad"
+        st.markdown(
+            f'<div class="status-card {status_class}"><div class="status-kicker">Current status</div>'
+            f'<div class="status-value">{escape(status_text)}</div>'
+            f'<div class="status-detail">{escape(status_detail)}</div></div>',
+            unsafe_allow_html=True,
+        )
         st.error("NO LIVE DATA")
         st.warning(error)
         st.info("Check that FastAPI is running, that its telemetry endpoint returns `ok: true`, and that the laptop can reach the NodeMCU.")
