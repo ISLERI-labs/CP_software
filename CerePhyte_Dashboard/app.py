@@ -1,5 +1,6 @@
 import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -20,6 +21,7 @@ APP_DATA_DIR = (
     / "state"
 )
 CSV_PATH = APP_DATA_DIR / "cerephyte_history.csv"
+RECORDINGS_DIR = APP_DATA_DIR / "recordings"
 CONFIG_PATH = APP_DATA_DIR / "dashboard_config.json"
 CSV_COLUMNS = ["captured_at", "sample", "mux1_channel", "mux2_channel", "voltage", "bat", "curr", "t2", "t3", "age_ms"]
 DEFAULT_API = "http://127.0.0.1:8000/telemetry"
@@ -57,6 +59,10 @@ FILTER_OPTIONS = (
     "Butterworth band-pass",
     "Wavelet denoising",
 )
+
+
+class RecordingWriteError(OSError):
+    pass
 DEFAULT_SETTINGS = {
     "background_theme": "CerePhyte Blue",
     "refresh_ms": 350,
@@ -180,6 +186,7 @@ if startup_splash is not None:
 import pandas as pd
 import plotly.graph_objects as go
 import requests
+from reporting import build_report_pdf
 
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -418,6 +425,16 @@ def save_if_new(data):
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writerow(row)
     st.session_state["last_saved_sample"] = sample
+    recording_path = st.session_state.get("recording_path")
+    if recording_path:
+        try:
+            with Path(recording_path).open("a", newline="", encoding="utf-8") as f:
+                csv.DictWriter(f, fieldnames=CSV_COLUMNS).writerow(row)
+        except OSError as exc:
+            st.session_state["recording_path"] = None
+            raise RecordingWriteError(
+                f"Recording stopped because {recording_path} could not be written: {exc}"
+            ) from exc
     return True
 
 
@@ -487,26 +504,79 @@ def load_all_history(limit=MAX_HISTORY_ROWS):
     return df.dropna(subset=["captured_at"]).sort_values("captured_at").tail(int(limit))
 
 
+def create_recording_file(name, directory):
+    recording_name = name.strip()
+    if not recording_name:
+        raise ValueError("Enter a name for this recording.")
+    if Path(recording_name).name != recording_name or any(
+        separator in recording_name for separator in ("/", "\\")
+    ):
+        raise ValueError("Enter a file name only; choose the folder in the directory field.")
+    if recording_name.lower().endswith(".csv"):
+        recording_name = recording_name[:-4]
+    if not recording_name or recording_name in {".", ".."}:
+        raise ValueError("Enter a valid recording name.")
+
+    directory_text = os.path.expandvars(os.path.expanduser(directory.strip()))
+    if not directory_text:
+        raise ValueError("Choose a folder for the recording.")
+    recording_directory = Path(directory_text).resolve()
+    recording_directory.mkdir(parents=True, exist_ok=True)
+    recording_path = recording_directory / f"{recording_name}.csv"
+    with recording_path.open("x", newline="", encoding="utf-8") as recording_file:
+        csv.DictWriter(recording_file, fieldnames=CSV_COLUMNS).writeheader()
+    return recording_path
+
+
+def load_report_csv(uploaded_file):
+    try:
+        df = pd.read_csv(io.BytesIO(uploaded_file.getvalue()))
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as exc:
+        raise ValueError(f"Could not read the selected CSV: {exc}") from exc
+
+    missing_columns = [column for column in CSV_COLUMNS if column not in df.columns]
+    if missing_columns:
+        raise ValueError(
+            "This CSV does not match the CerePhyte recording format. Missing columns: "
+            + ", ".join(missing_columns)
+        )
+    if df.empty:
+        raise ValueError("The selected CSV contains no recorded samples.")
+
+    df = df.copy()
+    df["captured_at"] = pd.to_datetime(df["captured_at"], utc=True, errors="coerce")
+    for column in ("sample", "mux1_channel", "mux2_channel", "voltage", "bat", "curr", "t2", "t3", "age_ms"):
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+    df = df.dropna(subset=["captured_at"]).sort_values("captured_at")
+    if df.empty:
+        raise ValueError("No valid UTC timestamps were found in the selected CSV.")
+    if not df["voltage"].notna().any():
+        raise ValueError("No valid voltage measurements were found in the selected CSV.")
+    return df
+
+
 def resample_uniform(times, values):
     time_values = pd.to_datetime(times, utc=True, errors="coerce")
-    epoch_seconds = time_values.astype("int64").to_numpy(dtype=np.float64) / 1_000_000_000
+    timestamps_ns = time_values.array.as_unit("ns").asi8
     signal_values = np.asarray(values, dtype=np.float64)
-    if len(epoch_seconds) != len(signal_values):
+    if len(timestamps_ns) != len(signal_values):
         return None, None, None, "Timestamp and signal sample counts do not match."
-    valid = (~np.asarray(time_values.isna(), dtype=bool)) & np.isfinite(epoch_seconds) & np.isfinite(signal_values)
-    epoch_seconds = epoch_seconds[valid]
+    valid = (~np.asarray(time_values.isna(), dtype=bool)) & np.isfinite(signal_values)
+    timestamps_ns = timestamps_ns[valid]
     signal_values = signal_values[valid]
-    if len(epoch_seconds) < 8:
+    if len(timestamps_ns) < 8:
         return None, None, None, "Filtering and FFT need at least 8 valid samples."
 
-    order = np.argsort(epoch_seconds)
-    epoch_seconds = epoch_seconds[order]
+    order = np.argsort(timestamps_ns)
+    timestamps_ns = timestamps_ns[order]
     signal_values = signal_values[order]
-    epoch_seconds, unique_indices = np.unique(epoch_seconds, return_index=True)
+    timestamps_ns, unique_indices = np.unique(timestamps_ns, return_index=True)
     signal_values = signal_values[unique_indices]
-    if len(epoch_seconds) < 8:
+    if len(timestamps_ns) < 8:
         return None, None, None, "Filtering and FFT need at least 8 unique timestamps."
 
+    origin_ns = timestamps_ns[0]
+    epoch_seconds = (timestamps_ns - origin_ns).astype(np.float64) / 1_000_000_000
     sample_interval = float(np.median(np.diff(epoch_seconds)))
     if not np.isfinite(sample_interval) or sample_interval <= 0:
         return None, None, None, "Could not determine a valid sample interval."
@@ -519,9 +589,9 @@ def resample_uniform(times, values):
             f"Resampling would exceed the {MAX_ANALYSIS_SAMPLES:,}-sample safety limit. "
             "Choose a shorter graph window or collect data at a steadier rate."
         )
-    regular_seconds = epoch_seconds[0] + np.arange(sample_count) * sample_interval
+    regular_seconds = np.arange(sample_count) * sample_interval
     regular_values = np.interp(regular_seconds, epoch_seconds, signal_values)
-    regular_times = pd.to_datetime(regular_seconds, unit="s", utc=True)
+    regular_times = pd.Timestamp(origin_ns, tz="UTC") + pd.to_timedelta(regular_seconds, unit="s")
     return regular_times, regular_values, sample_interval, None
 
 
@@ -725,8 +795,9 @@ def make_telemetry_chart(
             line=dict(width=3, color="#55d4e6"),
         ))
     elif chart_mode == "Time-Amplitude Heatmap":
-        epoch_seconds = pd.to_datetime(times, utc=True).astype("int64").to_numpy(dtype=np.float64) / 1_000_000_000
-        relative_seconds = epoch_seconds - epoch_seconds[0]
+        timestamp_values = pd.to_datetime(times, utc=True)
+        timestamps_ns = timestamp_values.array.as_unit("ns").asi8
+        relative_seconds = (timestamps_ns - timestamps_ns[0]).astype(np.float64) / 1_000_000_000
         time_bins = min(48, max(1, len(values) // 3))
         value_bins = min(32, max(4, int(np.sqrt(len(values)))))
         density, time_edges, value_edges = np.histogram2d(
@@ -834,6 +905,11 @@ init_csv()
 saved_settings, settings_warning = load_dashboard_settings()
 for setting_name, setting_value in saved_settings.items():
     st.session_state.setdefault(setting_name, setting_value)
+st.session_state.setdefault(
+    "new_recording_name",
+    f"cerephyte_recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+)
+st.session_state.setdefault("recording_directory", str(RECORDINGS_DIR))
 
 with st.sidebar:
     st.markdown("## ⚙️ Acquisition")
@@ -915,6 +991,36 @@ with st.sidebar:
                 st.error("Failed to set MUX 2")
         except Exception as e:
             st.error(f"Connection error: {e}")
+
+    st.divider()
+    st.markdown("### ⏺️ Recording")
+    active_recording = st.session_state.get("recording_path")
+    if active_recording:
+        st.success("Recording active")
+        st.caption(active_recording)
+        if st.button("Stop recording", use_container_width=True, key="stop_recording"):
+            st.session_state["recording_path"] = None
+            st.rerun()
+    else:
+        with st.form("start_recording_form"):
+            recording_name = st.text_input("Recording name", key="new_recording_name")
+            recording_directory = st.text_input(
+                "Recording folder",
+                key="recording_directory",
+                help="Defaults to the CerePhyte recordings folder. Enter or paste another folder path to use a custom location.",
+            )
+            start_recording = st.form_submit_button(
+                "Start new CSV recording",
+                use_container_width=True,
+            )
+        if start_recording:
+            try:
+                new_recording_path = create_recording_file(recording_name, recording_directory)
+            except (OSError, ValueError) as exc:
+                st.error(f"Could not start recording: {exc}")
+            else:
+                st.session_state["recording_path"] = str(new_recording_path)
+                st.success(f"Recording started: {new_recording_path.name}")
 
     st.divider()
     st.markdown("### 💾 History")
@@ -1067,6 +1173,8 @@ def live_panel():
         status_class = "status-good"
         try:
             save_if_new(data)
+        except RecordingWriteError as exc:
+            st.error(str(exc))
         except OSError as exc:
             st.error(f"Could not save history: {exc}")
 
@@ -1130,5 +1238,134 @@ else:
     display_df = all_df.tail(20).iloc[::-1].copy()
     display_df["captured_at"] = display_df["captured_at"].dt.strftime("%Y-%m-%d %H:%M:%S.%f UTC")
     st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+with st.expander("Generate report from a recording CSV", expanded=False):
+    st.write(
+        "Choose a CerePhyte recording CSV with the file picker or drag it into the upload area. "
+        "Add as many chart configurations as needed; the same scientific view can appear more than once."
+    )
+    report_upload = st.file_uploader(
+        "Recording CSV",
+        type=["csv"],
+        key="report_csv_upload",
+        help="Expected columns: " + ", ".join(CSV_COLUMNS),
+    )
+
+    report_df = None
+    if report_upload is not None:
+        try:
+            report_df = load_report_csv(report_upload)
+        except ValueError as exc:
+            st.error(str(exc))
+
+    if report_df is not None:
+        start_time = report_df["captured_at"].min().strftime("%Y-%m-%d %H:%M:%S.%f UTC")
+        end_time = report_df["captured_at"].max().strftime("%Y-%m-%d %H:%M:%S.%f UTC")
+        st.caption(
+            f"{len(report_df):,} valid rows · Start: {start_time} · End: {end_time}"
+        )
+
+        st.session_state.setdefault("report_chart_ids", [0])
+        st.session_state.setdefault("next_report_chart_id", 1)
+        if st.button("＋ Add another chart", key="add_report_chart"):
+            st.session_state["report_chart_ids"].append(st.session_state["next_report_chart_id"])
+            st.session_state["next_report_chart_id"] += 1
+            st.rerun()
+
+        chart_configs = []
+        for chart_number, chart_id in enumerate(st.session_state["report_chart_ids"], start=1):
+            with st.container(border=True):
+                st.markdown(f"**Chart {chart_number}**")
+                chart_columns = st.columns(3)
+                selected_series = chart_columns[0].selectbox(
+                    "Signal",
+                    tuple(CHART_SERIES),
+                    key=f"report_series_{chart_id}",
+                )
+                selected_mode = chart_columns[1].selectbox(
+                    "Scientific view",
+                    CHART_MODES,
+                    key=f"report_mode_{chart_id}",
+                )
+                selected_filter = chart_columns[2].selectbox(
+                    "Signal filter",
+                    FILTER_OPTIONS,
+                    key=f"report_filter_{chart_id}",
+                )
+                cutoff_key = f"report_cutoff_{chart_id}"
+                low_key = f"report_low_{chart_id}"
+                high_key = f"report_high_{chart_id}"
+                st.session_state.setdefault(cutoff_key, "0.5")
+                st.session_state.setdefault(low_key, "0.2")
+                st.session_state.setdefault(high_key, "1.0")
+                selected_cutoff = st.session_state[cutoff_key]
+                selected_low = st.session_state[low_key]
+                selected_high = st.session_state[high_key]
+                if "band-pass" in selected_filter:
+                    cutoff_columns = st.columns(2)
+                    selected_low = cutoff_columns[0].text_input(
+                        "Lower cutoff (Hz)",
+                        key=low_key,
+                    )
+                    selected_high = cutoff_columns[1].text_input(
+                        "Upper cutoff (Hz)",
+                        key=high_key,
+                    )
+                elif "low-pass" in selected_filter or "high-pass" in selected_filter:
+                    selected_cutoff = st.text_input(
+                        "Cutoff frequency (Hz)",
+                        key=cutoff_key,
+                    )
+                chart_configs.append({
+                    "series": selected_series,
+                    "mode": selected_mode,
+                    "filter": selected_filter,
+                    "cutoff": selected_cutoff,
+                    "low": selected_low,
+                    "high": selected_high,
+                })
+
+                if len(st.session_state["report_chart_ids"]) > 1:
+                    if st.button("Remove chart", key=f"remove_report_chart_{chart_id}"):
+                        st.session_state["report_chart_ids"].remove(chart_id)
+                        st.rerun()
+
+        report_signature = hashlib.sha256(
+            report_upload.getvalue()
+            + json.dumps(chart_configs, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        if st.button("Generate PDF report", type="primary", key="generate_pdf_report"):
+            try:
+                report_pdf = build_report_pdf(
+                    report_df,
+                    chart_configs,
+                    report_upload.name,
+                    LOGO_PATH,
+                    CHART_SERIES,
+                    CHART_MODES,
+                    apply_signal_filter,
+                    resample_uniform,
+                )
+            except (ImportError, MemoryError, OSError, RuntimeError, ValueError, FloatingPointError) as exc:
+                st.session_state.pop("generated_report", None)
+                st.session_state.pop("generated_report_signature", None)
+                st.error(f"Could not generate the PDF report: {exc}")
+            else:
+                st.session_state["generated_report"] = report_pdf
+                st.session_state["generated_report_signature"] = report_signature
+                st.success("Report generated.")
+
+        if (
+            st.session_state.get("generated_report")
+            and st.session_state.get("generated_report_signature") == report_signature
+        ):
+            report_name = f"{Path(report_upload.name).stem}_report.pdf"
+            st.download_button(
+                "⬇️ Download PDF report",
+                data=st.session_state["generated_report"],
+                file_name=report_name,
+                mime="application/pdf",
+                key="download_pdf_report",
+            )
 
 st.caption("CerePhyte is a prototype instrument. Verify calibration and signal integrity before interpreting measurements.")
